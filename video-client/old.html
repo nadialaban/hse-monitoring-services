@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8"/>
+    <title>Socket.io example</title>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js" integrity="sha384-/KNQL8Nu5gCHLqwqfQjA689Hhoqgi2S84SNUxC3roTe4EhJ9AfLkp8QiQcU8AMzI" crossorigin="anonymous"></script>
+
+    <script src="https://webrtc.github.io/adapter/adapter-latest.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/uuid/8.3.2/uuid.min.js"
+            integrity="sha512-UNM1njAgOFUa74Z0bADwAq8gbTcqZC8Ej4xPSzpnh0l6KMevwvkBvbldF9uR++qKeJ+MOZHRjV1HZjoRvjDfNQ=="
+            crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+
+</head>
+<body>
+
+<div class="select">
+    <label for="access_key">Access key: </label><input id="access_key"/>
+</div>
+
+
+<div class="select">
+    <label for="audioSource">Audio source: </label><select id="audioSource"></select>
+</div>
+
+<div class="select">
+    <label for="videoSource">Video source: </label><select id="videoSource"></select>
+</div>
+
+<button onclick="makeAuth(document.getElementById('access_key').value)">
+    Start
+</button>
+
+<br>
+
+
+<video id="localVideo" playsinline autoplay muted
+       style="border: 5px solid green; max-width: 300px; max-height: 300px;"></video>
+<video id="remoteVideo" playsinline autoplay
+       style="border: 5px solid red; max-width: 300px; max-height: 300px;"></video>
+
+
+<button onclick="closeRoom()">
+    Close room
+</button>
+
+<script>
+
+
+    let socket = io()
+    let role = undefined;
+    let room = undefined;
+    let rtc_config = undefined;
+    let ice_queue = []
+    let description_set = false;
+
+    socket.on('message', (message) => {
+        console.log('Message from server: ', message)
+
+        message = JSON.parse(message)
+
+        if (message.type == "AUTH_FAILED") {
+            alert("auth failed")
+        }
+
+        if (message.type == "AUTH_SUCCESS") {
+            alert("auth success")
+            role = message.params.role
+            room = message.params.room
+            rtc_config = message.params.rtc_config
+        }
+
+        if (message.type == "ICE") {
+            if (description_set) {
+                onIceCandidate(message.params)
+            } else {
+                ice_queue.push(message.params)
+            }
+
+        }
+
+        if (message.type == "SDP") {
+            if (message.params.type == "answer") {
+                onRemoteAnswer(message.params)
+            } else {
+                onRemoteOffer(message.params)
+            }
+        }
+
+        if (message.type == "INTERLOCUTOR_CONNECTED") {
+            prepareForCall()
+        }
+
+        if (message.type == "INTERLOCUTOR_DISCONNECTED" || message.type == "BREAK_BY_NEW_CONNECTION") {
+            hangup()
+        }
+    })
+
+    function message(type, params) {
+        console.log('Message to server: ', type, params)
+        socket.emit('message', JSON.stringify({type: type, params: params, id: uuid.v4(), timestamp: Date.now()}))
+    }
+
+    function makeAuth(key) {
+        message("AUTH", {access_key: key})
+    }
+
+    function closeRoom() {
+        message("CLOSE_ROOM", {})
+    }
+
+    let startTime;
+    const localVideo = document.getElementById('localVideo');
+    const remoteVideo = document.getElementById('remoteVideo');
+    const audioSelect = document.querySelector('select#audioSource');
+    const videoSelect = document.querySelector('select#videoSource');
+
+    function gotDevices(deviceInfos) {
+        window.deviceInfos = deviceInfos; // make available to console
+        console.log('Available input and output devices:', deviceInfos);
+        for (const deviceInfo of deviceInfos) {
+            const option = document.createElement('option');
+            option.value = deviceInfo.deviceId;
+            if (deviceInfo.kind === 'audioinput') {
+                option.text = deviceInfo.label || `Microphone ${audioSelect.length + 1}`;
+                audioSelect.appendChild(option);
+            } else if (deviceInfo.kind === 'videoinput') {
+                option.text = deviceInfo.label || `Camera ${videoSelect.length + 1}`;
+                videoSelect.appendChild(option);
+            }
+        }
+    }
+
+    navigator.mediaDevices.enumerateDevices().then(gotDevices)
+
+    localVideo.addEventListener('loadedmetadata', function () {
+        console.log(`Local video videoWidth: ${this.videoWidth}px,  videoHeight: ${this.videoHeight}px`);
+    });
+
+    remoteVideo.addEventListener('loadedmetadata', function () {
+        console.log(`Remote video videoWidth: ${this.videoWidth}px,  videoHeight: ${this.videoHeight}px`);
+    });
+
+    remoteVideo.addEventListener('resize', () => {
+        console.log(`Remote video size changed to ${remoteVideo.videoWidth}x${remoteVideo.videoHeight} - Time since pageload ${performance.now().toFixed(0)}ms`);
+        // We'll use the first onsize callback as an indication that video has started
+        // playing out.
+        if (startTime) {
+            const elapsedTime = window.performance.now() - startTime;
+            console.log('Setup time: ' + elapsedTime.toFixed(3) + 'ms');
+            startTime = null;
+        }
+    });
+
+    let localStream;
+    let peer_connection;
+
+    const offerOptions = {
+        offerToReceiveAudio: 1,
+        offerToReceiveVideo: 1
+    };
+
+    async function prepareForStream() {
+        console.log("preparing for stream")
+        try {
+            const audioSource = audioSelect.value;
+            const videoSource = videoSelect.value;
+            const constraints = {
+                audio: {deviceId: audioSource ? {exact: audioSource} : undefined},
+                video: {deviceId: videoSource ? {exact: videoSource} : undefined}
+            };
+
+            console.log(constraints)
+
+            const stream = await navigator.mediaDevices.getUserMedia(constraints);
+            console.log('Received local stream');
+            localVideo.srcObject = stream;
+            localStream = stream;
+        } catch (e) {
+            console.log(e)
+            alert(`getUserMedia() e: ${e.name}`);
+        }
+    }
+
+    async function prepareForCall() {
+        await prepareForStream()
+        console.log('Starting call');
+        const videoTracks = localStream.getVideoTracks();
+        const audioTracks = localStream.getAudioTracks();
+        if (videoTracks.length > 0) {
+            console.log(`Using video device: ${videoTracks[0].label}`);
+        }
+        if (audioTracks.length > 0) {
+            console.log(`Using audio device: ${audioTracks[0].label}`);
+        }
+        const configuration = rtc_config;
+        console.log('RTCPeerConnection configuration:', configuration);
+
+        peer_connection = new RTCPeerConnection(configuration);
+        peer_connection.onicecandidate = e => {
+            console.log("got ice", e)
+
+            let packet = {
+                candidate: null
+            }
+
+            if (e.candidate) {
+                packet.candidate = e.candidate.candidate;
+                packet.sdpMid = e.candidate.sdpMid;
+                packet.sdpMLineIndex = e.candidate.sdpMLineIndex;
+            }
+
+            message("ICE", packet);
+        }
+        peer_connection.oniceconnectionstatechange = e => onIceStateChange(peer_connection, e);
+        peer_connection.ontrack = gotRemoteStream
+
+        localStream.getTracks().forEach(track => {
+            peer_connection.addTrack(track, localStream)
+            console.log('Added track to peer connection', track);
+        });
+
+        if (room.mode != "P2P" || role == "DOCTOR") {
+            await createOffer()
+        }
+
+    }
+
+    async function createOffer() {
+        try {
+            console.log('createOffer start');
+            const offer = await peer_connection.createOffer(offerOptions);
+
+            console.log('setLocalDescription start');
+
+            try {
+                message("SDP", offer)
+                await peer_connection.setLocalDescription(offer);
+                console.log(`setLocalDescription complete`, offer.sdp);
+            } catch (e) {
+                console.log(`setLocalDescription error`, e);
+            }
+        } catch (e) {
+            console.log(`Failed to set session description: ${e.toString()}`);
+        }
+    }
+
+    async function onRemoteOffer(offer) {
+        console.log("got remote offer")
+        try {
+            await peer_connection.setRemoteDescription(offer);
+            console.log(`setRemoteDescription complete`, offer.sdp);
+
+            console.log('interlocutor_peer_connection createAnswer start');
+            try {
+                const answer = await peer_connection.createAnswer();
+                console.log("answer is ", answer.sdp)
+                message("SDP", answer)
+                await peer_connection.setLocalDescription(answer)
+            } catch (e) {
+                console.log(`Failed to create session offerription: ${e.toString()}`);
+            }
+
+        } catch (e) {
+            console.log(`Failed to set remote offerription: ${e.toString()}`);
+        }
+    }
+
+    async function onRemoteAnswer(answer) {
+        console.log("got remote answer")
+        try {
+            await peer_connection.setRemoteDescription(answer);
+            description_set = true;
+            ice_queue.forEach((event) => {
+                onIceCandidate(event)
+            })
+            ice_queue = []
+            console.log("set remote description success")
+        } catch (e) {
+            console.log(`Failed to set remote description: ${e.toString()}`);
+        }
+    }
+
+    function gotRemoteStream(e) {
+        try {
+            console.log(e)
+            if (remoteVideo.srcObject !== e.streams[0]) {
+                remoteVideo.srcObject = e.streams[0];
+                console.log('received remote stream');
+            }
+        } catch (error) {
+            console.log("add stream error", error)
+        }
+    }
+
+    async function onIceCandidate(event) {
+        try {
+            console.log(event)
+            if (event.candidate) {
+                await peer_connection.addIceCandidate(event);
+                console.log(`addIceCandidate success`, event);
+            } else {
+                await peer_connection.addIceCandidate(null);
+                console.log(`addIceCandidate success`, null);
+            }
+
+        } catch (e) {
+            console.log(`failed to add ICE Candidate: ${e.toString()}`);
+        }
+    }
+
+    function onIceStateChange(pc, event) {
+        if (pc) {
+            console.log(`ICE state: ${pc.iceConnectionState}`);
+            console.log('ICE state change event: ', event);
+        }
+    }
+
+    async function hangup() {
+        description_set = false
+        ice_queue = []
+        if (peer_connection) {
+            console.log("Closing connection")
+            peer_connection.close();
+            peer_connection = null;
+        }
+
+        if (localStream) {
+            console.log("Stopping stream")
+            localStream.getTracks().forEach(track => track.stop());
+            localStream = null;
+        }
+
+    }
+</script>
+</body>
+</html>

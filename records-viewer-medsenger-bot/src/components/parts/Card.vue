@@ -1,0 +1,45 @@
+<template>
+    <div class="card" :class="additional_class" :style="bg">
+        <div class="card-body">
+            <h6 class="card-title" v-if="title">{{ title }}</h6>
+            <slot></slot>
+        </div>
+    </div>
+</template>
+
+<script>
+export default {
+    name: "Card",
+    props: ['title', 'image', 'additional_class'],
+    computed: {
+        bg: function () {
+            if (this.image) {
+                return "background-image: url('" + this.image + "'); "
+            } else {
+                return "background-image: none;"
+            }
+        }
+    }
+}
+</script>
+
+<style scoped>
+.card {
+    margin-bottom: 15px;
+    background-repeat: no-repeat;
+    background-position: right 5px bottom 5px;
+    background-size: 55px;
+    height: 90%;
+}
+
+.card a {
+    font-size: 0.75rem;
+}
+
+.card-body {
+    display: flex;
+    flex-flow: column;
+    justify-content: space-between;
+    align-items: start;
+}
+</style>

@@ -1,0 +1,6 @@
+Flask
+requests
+transliterate
+weasyprint
+pytz
+medsenger-api

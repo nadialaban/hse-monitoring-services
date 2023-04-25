@@ -1,0 +1,23 @@
+MAIN_HOST = ''
+LOCALHOST = ''
+
+APP_KEY = ''
+
+AGENT_ID = ''
+HOST = ''
+PORT = ''
+
+DB_LOGIN = ''
+DB_PASSWORD = ''
+DB_HOST = ''
+DB_PORT = ''
+DB_DATABASE = ''
+
+PRODUCTION = ''
+API_DEBUG = ''
+
+ZOOM_KEY = ''
+ZOOM_SECRET = ''
+DEFAULT_ACCOUNT = ('', '')
+
+VC_KEY = ''

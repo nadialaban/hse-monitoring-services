@@ -1,0 +1,43 @@
+{
+  "name": "video-client-backend",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.mjs",
+  "private": true,
+  "scripts": {
+    "dev": "cross-env NODE_ENV=development webpack-dev-server --open --hot",
+    "build": "cross-env NODE_ENV=production webpack --progress --hide-modules"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "del": "^7.0.0",
+    "dotenv": "^16.0.3",
+    "easy-yandex-s3": "^2.0.0",
+    "express": "^4.18.2",
+    "kurento-client": "^6.18.0",
+    "node-fetch": "^3.3.0",
+    "pg": "^8.8.0",
+    "socket.io": "^4.5.4",
+    "socket.io-client": "^4.5.4",
+    "uglifyjs-webpack-plugin": "^1.3.0",
+    "uuid": "^9.0.0",
+    "vue": "^2.5.11"
+  },
+  "devDependencies": {
+    "babel-core": "^6.26.3",
+    "babel-loader": "^7.1.2",
+    "babel-plugin-transform-runtime": "^6.23.0",
+    "babel-preset-env": "^1.6.0",
+    "babel-preset-stage-0": "^6.24.1",
+    "cross-env": "^5.0.5",
+    "css-loader": "^0.28.7",
+    "file-loader": "^1.1.4",
+    "vue-loader": "^13.0.5",
+    "vue-template-compiler": "^2.4.4",
+    "webpack": "^3.6.0",
+    "webpack-dev-server": "^2.9.1"
+  }
+}

@@ -1,0 +1,12 @@
+flask
+flask_sqlalchemy
+flask_migrate
+apscheduler
+psycopg2-binary
+requests
+sentry-sdk[flask]
+medsenger-api>=0.1.17
+pytz
+redis
+celery
+uwsgi

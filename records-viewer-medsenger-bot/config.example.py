@@ -1,0 +1,12 @@
+MAIN_HOST = ''
+LOCALHOST = ''
+
+APP_KEY = ''
+
+AGENT_ID = ''
+HOST = ''
+PORT = ''
+API_DEBUG = ''
+
+PDF_DIR_PATH = ''
+RECORDS_LIMIT = ''
